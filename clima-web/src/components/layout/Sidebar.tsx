@@ -1,7 +1,7 @@
 
 
 import React, { useState, useMemo } from 'react';
-import { useLocation, Link, useNavigate } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import {
     LogOut,
     ArrowLeftFromLine,
@@ -16,6 +16,7 @@ import {
 import { CountrySelector } from './CountrySelector';
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
+import { PORTAL_URL } from '../../constants/runtime';
 import { APP_MENU, ICON_MAP } from '../../constants/appMenu';
 import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 import { ShieldAlert } from 'lucide-react';
@@ -34,7 +35,6 @@ type NavItem = {
 export const Sidebar: React.FC = () => {
     const { isSidebarCollapsed, toggleSidebar } = useUI();
     const location = useLocation();
-    const navigate = useNavigate();
     const { logout, user } = useAuth();
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const currentPath = location.pathname;
@@ -169,7 +169,7 @@ export const Sidebar: React.FC = () => {
 
     const handleLogout = () => {
         logout();
-        navigate('/login');
+        window.location.href = PORTAL_URL;
     };
 
     const renderNavItem = (item: NavItem) => {
