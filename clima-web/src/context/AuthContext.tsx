@@ -8,7 +8,7 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import type { Usuario } from '../types/modelos';
-import { API_BASE } from '../constants/runtime';
+import { API_BASE, AUTH_STORAGE_KEYS } from '../constants/runtime';
 
 type User = Usuario;
 type AuthBootstrapResponse = {
@@ -31,6 +31,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
 
+    const clearPersistedSession = () => {
+        localStorage.removeItem(AUTH_STORAGE_KEYS.token);
+        localStorage.removeItem(AUTH_STORAGE_KEYS.refreshToken);
+        localStorage.removeItem(AUTH_STORAGE_KEYS.user);
+    };
+
     const persistSession = (token: string, refreshToken: string, userData: User) => {
         const safeUser = { ...userData };
         const roleData = (userData as any).rol;
@@ -39,9 +45,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             (safeUser as any).reglas = roleData.reglas;
         }
 
-        localStorage.setItem('clarity_token', token);
-        localStorage.setItem('clarity_refresh_token', refreshToken);
-        localStorage.setItem('clarity_user', JSON.stringify(safeUser));
+        localStorage.setItem(AUTH_STORAGE_KEYS.token, token);
+        localStorage.setItem(AUTH_STORAGE_KEYS.refreshToken, refreshToken);
+        localStorage.setItem(AUTH_STORAGE_KEYS.user, JSON.stringify(safeUser));
         setUser(safeUser);
     };
 
@@ -49,8 +55,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         let cancelled = false;
 
         const bootstrapAuth = async () => {
-            const token = localStorage.getItem('clarity_token');
-            const savedUser = localStorage.getItem('clarity_user');
+            const currentUrl = new URL(window.location.href);
+            const isSsoCallback =
+                currentUrl.pathname.includes('/auth/sso') &&
+                currentUrl.searchParams.has('token');
+            const token = localStorage.getItem(AUTH_STORAGE_KEYS.token);
+            const savedUser = localStorage.getItem(AUTH_STORAGE_KEYS.user);
 
             if (token && savedUser) {
                 try {
@@ -59,13 +69,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     }
                     return;
                 } catch {
-                    localStorage.removeItem('clarity_token');
-                    localStorage.removeItem('clarity_refresh_token');
-                    localStorage.removeItem('clarity_user');
+                    clearPersistedSession();
                 } finally {
                     if (!cancelled) {
                         setLoading(false);
                     }
+                }
+                return;
+            }
+
+            if (isSsoCallback) {
+                if (!cancelled) {
+                    setLoading(false);
                 }
                 return;
             }
@@ -111,9 +126,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const logout = () => {
-        localStorage.removeItem('clarity_token');
-        localStorage.removeItem('clarity_refresh_token');
-        localStorage.removeItem('clarity_user');
+        clearPersistedSession();
         setUser(null);
     };
 
@@ -133,4 +146,3 @@ export const useAuth = () => {
     if (!context) throw new Error('useAuth must be used within an AuthProvider');
     return context;
 };
-

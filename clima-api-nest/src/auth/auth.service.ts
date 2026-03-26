@@ -48,6 +48,9 @@ export class AuthService {
   }
 
   async login(user: any) {
+    if (!user) {
+      throw new UnauthorizedException('Usuario no resuelto para login');
+    }
     // Registrar Auditoría
     await this.auditService.log({
       idUsuario: user.idUsuario,
@@ -244,7 +247,7 @@ export class AuthService {
 
     try {
       // Validamos el token con el secreto compartido del Portal Central
-      console.log(`[SSO] Validando ticket en Planer v2...`);
+      console.log(`[SSO] Validando ticket en Clima...`);
       const payload = await this.jwtService.verifyAsync(token, { 
         secret: SSO_SECRET,
         clockTolerance: 10 

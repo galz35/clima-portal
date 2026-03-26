@@ -145,17 +145,17 @@ export const LoginPage = () => {
                         <div className="absolute inset-0 bg-gradient-to-r from-pink-500 to-orange-500 blur-3xl opacity-20 hover:opacity-30 transition-opacity duration-500"></div>
                         <img
                             src="/momentus-logo2.png"
-                            alt="Planner-EF"
+                            alt="CLIMA"
                             className="h-64 w-auto relative z-10 drop-shadow-2xl transform hover:scale-105 transition-transform duration-500"
                         />
                         <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 w-max z-20">
                             <h1 className="text-7xl font-black text-white mb-2 tracking-tight leading-none drop-shadow-2xl uppercase">
-                                PLANNER-EF
+                                CLIMA
                             </h1>
                             <div className="flex justify-center mt-2">
                             </div>
                             <p className="text-2xl text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-orange-400 font-semibold drop-shadow-lg text-center uppercase">
-                                Eficiencia y Legado
+                                Clima Laboral
                             </p>
                         </div>
                     </div>
@@ -168,11 +168,11 @@ export const LoginPage = () => {
                     {/* Logotipo móvil */}
                     <div className="lg:hidden text-center mb-12">
                         <div className="relative inline-block pb-16">
-                            <img src="/momentus-logo2.png" alt="Planner-EF" className="h-32 w-auto" />
+                            <img src="/momentus-logo2.png" alt="CLIMA" className="h-32 w-auto" />
                             <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-max">
-                                <h1 className="text-3xl font-black text-slate-900 mb-1 uppercase">PLANNER-EF</h1>
+                                <h1 className="text-3xl font-black text-slate-900 mb-1 uppercase">CLIMA</h1>
                                 <p className="text-lg text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-orange-600 font-bold uppercase">
-                                    Eficiencia y Legado
+                                    Clima Laboral
                                 </p>
                             </div>
                         </div>

@@ -473,7 +473,7 @@ export const ReportsPage: React.FC = () => {
 
                 {/* Footer for Print */}
                 <div className="hidden print:block mt-10 pt-10 border-t border-slate-300 text-center text-xs text-slate-500">
-                    <p>Planner-EF System Report • Confidencial • {new Date().getFullYear()}</p>
+                    <p>CLIMA • Confidencial • {new Date().getFullYear()}</p>
                 </div>
             </main>
         </div>

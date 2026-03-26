@@ -252,13 +252,13 @@ export const Sidebar: React.FC = () => {
                 {isSidebarCollapsed ? (
                     <div onClick={toggleSidebar} className="cursor-pointer hover:scale-105 transition-transform">
                         <div className="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center shadow-lg">
-                            <span className="text-white font-black text-lg">P</span>
+                            <span className="text-white font-black text-lg">C</span>
                         </div>
                     </div>
                 ) : (
                     <div onClick={toggleSidebar} className="cursor-pointer flex items-center gap-2 hover:opacity-80 transition-opacity">
                         <div className="animate-fade-in overflow-hidden">
-                            <h1 className="font-black text-xl text-slate-900 tracking-tight leading-tight uppercase">PLANNER-EF</h1>
+                            <h1 className="font-black text-xl text-slate-900 tracking-tight leading-tight uppercase">CLIMA</h1>
                         </div>
                     </div>
                 )}

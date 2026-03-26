@@ -1,11 +1,10 @@
 import { useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { PORTAL_URL } from '../constants/runtime';
+import { PORTAL_URL, appPath } from '../constants/runtime';
 
 export const SSOHandlerPage = () => {
     const [searchParams] = useSearchParams();
-    const navigate = useNavigate();
     const { login } = useAuth();
 
     useEffect(() => {
@@ -21,7 +20,6 @@ export const SSOHandlerPage = () => {
             try {
                 console.log('--- SSO HANDSHAKE START ---');
                 
-                // 1. Llamamos al backend de Planer para validar el token del Portal
                 const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/sso-login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -39,18 +37,13 @@ export const SSOHandlerPage = () => {
                 if (!responseBody) throw new Error('Response body is empty');
 
                 console.log(`👤 New Identity established: ${responseBody.user?.correo}`);
-                
-                // 3. Establecemos la sesión fresca
                 login(responseBody.access_token, responseBody.refresh_token, responseBody.user);
                 
-                console.log('Session established, waiting for state commit...');
-                
-                // Agregamos un pequeño delay técnico para asegurar que Context API 
-                // propague el estado del usuario antes de que ProtectedRoute lo evalúe
+                console.log('Session established, preparing dashboard redirect...');
                 setTimeout(() => {
                     console.log('🚀 Navigating to dashboard...');
-                    navigate('/app/hoy', { replace: true });
-                }, 500);
+                    window.location.replace(appPath('/app/hoy'));
+                }, 100);
             } catch (error) {
                 console.error('SSO Global Error:', error);
                 window.location.href = `${PORTAL_URL}?error=sso_failed`;
@@ -58,7 +51,7 @@ export const SSOHandlerPage = () => {
         };
 
         performSSO();
-    }, [searchParams, login, navigate]);
+    }, [searchParams, login]);
 
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-clarity-bg">

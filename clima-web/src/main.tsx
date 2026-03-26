@@ -4,7 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import { registerPWA } from './pwa/sw-register.ts'
 
-const CURRENT_V = 'CV_25_MAR_2026_SSO_SAFE';
+const CURRENT_V = 'CV_26_MAR_2026_CLIMA_BRAND_REFRESH';
 console.log(`--- SYSTEM_VERSION: ${CURRENT_V} ---`);
 
 const currentUrl = new URL(window.location.href);

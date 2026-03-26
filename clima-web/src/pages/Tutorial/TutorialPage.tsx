@@ -27,20 +27,20 @@ const TUTORIAL_MODULES: TutorialModule[] = [
     {
         id: 'intro',
         title: 'Primeros Pasos',
-        description: 'Qué es Planner-EF y cómo empezar',
+        description: 'Qué es CLIMA y cómo empezar',
         icon: <BookOpen />,
         color: 'bg-blue-500',
         gradient: 'from-blue-500 to-cyan-500',
         lessons: [
             {
-                title: '¿Qué es Planner-EF?',
+                title: '¿Qué es CLIMA?',
                 duration: '3 min',
                 content: (
                     <div className="space-y-6">
                         <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
                             <h4 className="font-bold text-blue-800 text-lg mb-3">En palabras simples:</h4>
                             <p className="text-blue-700">
-                                Planner-EF es una herramienta para organizar tu trabajo. Te ayuda a saber qué hacer cada día
+                                CLIMA es una herramienta para organizar tu trabajo. Te ayuda a saber qué hacer cada día
                                 y a mostrar tu avance sin necesidad de reuniones constantes.
                             </p>
                         </div>
@@ -175,7 +175,7 @@ const TUTORIAL_MODULES: TutorialModule[] = [
                     <div className="space-y-6">
                         <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100">
                             <h4 className="font-bold text-emerald-800 mb-2">☀️ Cada mañana, haz esto:</h4>
-                            <p className="text-emerald-700">Abre Planner-EF y decide qué vas a hacer hoy. Toma solo 2 minutos.</p>
+                            <p className="text-emerald-700">Abre CLIMA y decide qué vas a hacer hoy. Toma solo 2 minutos.</p>
                         </div>
 
                         <div className="space-y-4">
@@ -518,7 +518,7 @@ const TUTORIAL_MODULES: TutorialModule[] = [
                 content: (
                     <div className="space-y-6">
                         <div className="bg-purple-500 p-5 rounded-2xl text-white">
-                            <h4 className="font-bold text-lg mb-2">Tu trabajo como jefe en Planner-EF:</h4>
+                            <h4 className="font-bold text-lg mb-2">Tu trabajo como jefe en CLIMA:</h4>
                             <p className="text-purple-100">
                                 No ver tareas una por una, sino tener una visión general de cómo va todo.
                             </p>
@@ -642,7 +642,7 @@ const TUTORIAL_MODULES: TutorialModule[] = [
                         <div className="bg-amber-500 p-5 rounded-2xl text-white">
                             <h4 className="font-bold text-lg mb-2">🌅 En la mañana (5 minutos)</h4>
                             <ul className="space-y-1 text-amber-50 text-sm">
-                                <li>1. Abre Planner-EF</li>
+                                <li>1. Abre CLIMA</li>
                                 <li>2. Marca cómo te sientes</li>
                                 <li>3. Elige tu tarea principal y las secundarias</li>
                                 <li>4. ¡Listo! Ya puedes empezar a trabajar</li>
@@ -721,7 +721,7 @@ export const TutorialPage: React.FC = () => {
                 <div className="p-5 border-b border-slate-100 bg-indigo-600 text-white">
                     <h1 className="text-xl font-bold flex items-center gap-2">
                         <BookOpen size={24} />
-                        Aprende a usar Planner-EF
+                        Aprende a usar CLIMA
                     </h1>
                     <p className="text-indigo-200 mt-1 text-sm">Paso a paso, sin complicaciones</p>
 
