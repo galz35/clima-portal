@@ -5,12 +5,19 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use serde::Deserialize;
+use std::path::{Path as StdPath, PathBuf};
+use tokio::fs;
 
 use crate::auth::AuthUser;
 use crate::state::ApiState;
 
 type SqlConnection<'a> = bb8::PooledConnection<'a, bb8_tiberius::ConnectionManager>;
+
+const PROJECT_EVIDENCE_ROOT: &str = "/opt/apps/clima-portal-data/proyectos";
+const PROJECT_EVIDENCE_MAX_BYTES: usize = 1_000_000;
+const PROJECT_EVIDENCE_MAX_SLOTS: u8 = 2;
 
 fn proyectos_is_admin_role_name(role: &str) -> bool {
     matches!(role.trim(), "Admin" | "Administrador" | "SuperAdmin")
@@ -87,6 +94,101 @@ fn proyectos_json_string(value: &serde_json::Value, key: &str) -> Option<String>
         }
         other => Some(other.to_string()),
     })
+}
+
+fn proyectos_evidencia_extension(mime_type: &str) -> Option<&'static str> {
+    match mime_type.trim().to_ascii_lowercase().as_str() {
+        "image/webp" => Some("webp"),
+        "image/jpeg" | "image/jpg" => Some("jpg"),
+        "image/png" => Some("png"),
+        _ => None,
+    }
+}
+
+fn proyectos_evidencia_root_for(id_proyecto: i32) -> PathBuf {
+    StdPath::new(PROJECT_EVIDENCE_ROOT).join(id_proyecto.to_string())
+}
+
+fn proyectos_estado_actual(proyecto: &serde_json::Value) -> String {
+    proyectos_json_string(proyecto, "estado").unwrap_or_default()
+}
+
+fn proyectos_evidencia_safe_file_name(
+    slot: u8,
+    mime_type: &str,
+    original_name: &str,
+) -> Result<String, String> {
+    let ext = proyectos_evidencia_extension(mime_type)
+        .ok_or_else(|| "Formato no permitido. Solo WebP, JPG o PNG.".to_string())?;
+    let stem = original_name
+        .trim()
+        .rsplit_once('.')
+        .map(|(left, _)| left)
+        .unwrap_or(original_name)
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string();
+    let safe_stem = if stem.is_empty() {
+        "evidencia".to_string()
+    } else {
+        stem.chars().take(40).collect()
+    };
+
+    Ok(format!(
+        "slot{}_{}_{}.{}",
+        slot,
+        chrono::Utc::now().format("%Y%m%d%H%M%S%3f"),
+        safe_stem,
+        ext
+    ))
+}
+
+async fn proyectos_evidencias_query(
+    client: &mut SqlConnection<'_>,
+    id_proyecto: i32,
+) -> Vec<serde_json::Value> {
+    let rows = crate::handlers::equipo::exec_query_to_json(
+        client,
+        "SELECT idEvidencia, idProyecto, slot, fileNameOriginal, fileNameStored, mimeType, fileSizeBytes, relativePath, createdAt, updatedAt
+         FROM dbo.p_ProyectoEvidencias
+         WHERE idProyecto = @P1
+         ORDER BY slot ASC",
+        &[&id_proyecto],
+    )
+    .await;
+
+    let mut result = Vec::with_capacity(rows.len());
+    for mut row in rows {
+        let mime_type = proyectos_json_string(&row, "mimeType")
+            .unwrap_or_else(|| "application/octet-stream".to_string());
+        let relative_path = proyectos_json_string(&row, "relativePath").unwrap_or_default();
+        let file_path = StdPath::new(PROJECT_EVIDENCE_ROOT).join(relative_path);
+
+        if let Ok(bytes) = fs::read(&file_path).await {
+            if let Some(obj) = row.as_object_mut() {
+                obj.insert(
+                    "dataUrl".to_string(),
+                    serde_json::Value::String(format!(
+                        "data:{};base64,{}",
+                        mime_type,
+                        BASE64_STANDARD.encode(bytes)
+                    )),
+                );
+            }
+        }
+
+        result.push(row);
+    }
+
+    result
 }
 
 async fn proyectos_is_admin_user(client: &mut SqlConnection<'_>, user: &AuthUser) -> bool {
@@ -470,7 +572,7 @@ pub async fn proyectos_create(
                     .tipo
                     .clone()
                     .unwrap_or_else(|| "administrativo".to_string()),
-                &"Activo",
+                &"Borrador",
             ],
         )
         .await
@@ -493,6 +595,17 @@ pub async fn proyectos_create(
                 .flatten()
                 .unwrap_or(0);
 
+            let requiere_aprobacion = true;
+            let _ = client
+                .execute(
+                    "UPDATE dbo.p_Proyectos
+                     SET requiereAprobacion = @P1,
+                         fechaActualizacion = GETDATE()
+                     WHERE idProyecto = @P2",
+                    &[&requiere_aprobacion, &id_nuevo],
+                )
+                .await;
+
             // Obtenemos el detalle completo para devolverlo al frontend (incluyendo responsableNombre, etc)
             if let Some(proyecto) = proyectos_obtener_detalle(&mut client, id_nuevo).await {
                 (
@@ -512,7 +625,7 @@ pub async fn proyectos_create(
                         serde_json::json!({
                             "idProyecto": id_nuevo,
                             "nombre": body.nombre,
-                            "estado": "Activo"
+                            "estado": "Borrador"
                         }),
                         201,
                         original_uri.path(),
@@ -597,6 +710,486 @@ pub async fn proyectos_clone(
         )
             .into_response(),
     }
+}
+
+pub async fn proyectos_solicitar_aprobacion(
+    user: AuthUser,
+    State(state): State<ApiState>,
+    Path(id): Path<i32>,
+    Json(body): Json<ProyectoSolicitarAprobacionRequest>,
+) -> impl IntoResponse {
+    let mut client = match state.pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(crate::models::ApiResponse::error(e.to_string(), 500)),
+            )
+                .into_response()
+        }
+    };
+
+    let proyecto = match proyectos_obtener_detalle(&mut client, id).await {
+        Some(value) => value,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::models::ApiResponse::error(
+                    "Proyecto no encontrado".to_string(),
+                    404,
+                )),
+            )
+                .into_response();
+        }
+    };
+
+    if !proyectos_tiene_permiso(&mut client, id, &proyecto, &user, "EDIT_PROJECT").await {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(crate::models::ApiResponse::error(
+                "No tienes permiso para enviar este proyecto a aprobación.".to_string(),
+                403,
+            )),
+        )
+            .into_response();
+    }
+
+    let estado_actual = proyectos_estado_actual(&proyecto);
+    if estado_actual == "PendienteAprobacion" {
+        return (
+            StatusCode::CONFLICT,
+            Json(crate::models::ApiResponse::error(
+                "Este proyecto ya fue enviado y está pendiente de aprobación.".to_string(),
+                409,
+            )),
+        )
+            .into_response();
+    }
+
+    let pendiente = crate::handlers::equipo::exec_query_to_json(
+        &mut client,
+        "SELECT TOP 1 idSolicitudProyecto
+         FROM dbo.p_ProyectoSolicitudesAprobacion
+         WHERE idProyecto = @P1 AND estado = 'Pendiente'
+         ORDER BY fechaSolicitud DESC",
+        &[&id],
+    )
+    .await;
+    if !pendiente.is_empty() {
+        return (
+            StatusCode::CONFLICT,
+            Json(crate::models::ApiResponse::error(
+                "Ya existe una solicitud pendiente para este proyecto.".to_string(),
+                409,
+            )),
+        )
+            .into_response();
+    }
+
+    let motivo = body
+        .motivo
+        .unwrap_or_else(|| "Proyecto listo para revisión administrativa".to_string());
+    let estado_pendiente = "PendienteAprobacion".to_string();
+    let requiere_aprobacion = true;
+    if let Err(e) = client
+        .execute(
+            "UPDATE dbo.p_Proyectos
+             SET estado = @P1,
+                 requiereAprobacion = @P2,
+                 fechaActualizacion = GETDATE()
+             WHERE idProyecto = @P3",
+            &[&estado_pendiente, &requiere_aprobacion, &id],
+        )
+        .await
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::models::ApiResponse::error(e.to_string(), 400)),
+        )
+            .into_response();
+    }
+
+    if let Err(e) = client
+        .execute(
+            "INSERT INTO dbo.p_ProyectoSolicitudesAprobacion
+             (idProyecto, idUsuarioSolicitante, motivo, estado, fechaSolicitud)
+             VALUES (@P1, @P2, @P3, 'Pendiente', GETDATE())",
+            &[&id, &user.user_id_i32(), &motivo],
+        )
+        .await
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::models::ApiResponse::error(e.to_string(), 400)),
+        )
+            .into_response();
+    }
+
+    let proyecto_actualizado = proyectos_obtener_detalle(&mut client, id)
+        .await
+        .unwrap_or(proyecto);
+
+    (
+        StatusCode::OK,
+        Json(crate::models::ApiResponse::success(serde_json::json!({
+            "message": "Proyecto enviado a aprobación",
+            "project": proyecto_actualizado
+        }))),
+    )
+        .into_response()
+}
+
+pub async fn proyectos_evidencias_list(
+    user: AuthUser,
+    State(state): State<ApiState>,
+    Path(id): Path<i32>,
+) -> impl IntoResponse {
+    let mut client = match state.pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(crate::models::ApiResponse::error(e.to_string(), 500)),
+            )
+                .into_response()
+        }
+    };
+
+    let proyecto = match proyectos_obtener_detalle(&mut client, id).await {
+        Some(value) => value,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::models::ApiResponse::error(
+                    "Proyecto no encontrado".to_string(),
+                    404,
+                )),
+            )
+                .into_response();
+        }
+    };
+
+    if !proyectos_tiene_permiso(&mut client, id, &proyecto, &user, "VIEW_PROJECT").await {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(crate::models::ApiResponse::error(
+                "No tienes permiso para ver evidencias de este proyecto.".to_string(),
+                403,
+            )),
+        )
+            .into_response();
+    }
+
+    let evidencias = proyectos_evidencias_query(&mut client, id).await;
+
+    (
+        StatusCode::OK,
+        Json(crate::models::ApiResponse::success(evidencias)),
+    )
+        .into_response()
+}
+
+pub async fn proyectos_evidencias_upload(
+    user: AuthUser,
+    State(state): State<ApiState>,
+    Path(id): Path<i32>,
+    Json(body): Json<ProyectoEvidenciaUploadRequest>,
+) -> impl IntoResponse {
+    if body.slot == 0 || body.slot > PROJECT_EVIDENCE_MAX_SLOTS {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::models::ApiResponse::error(
+                format!(
+                    "Solo se permiten {} evidencias por proyecto.",
+                    PROJECT_EVIDENCE_MAX_SLOTS
+                ),
+                400,
+            )),
+        )
+            .into_response();
+    }
+
+    let safe_name =
+        match proyectos_evidencia_safe_file_name(body.slot, &body.mime_type, &body.file_name) {
+            Ok(value) => value,
+            Err(message) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::models::ApiResponse::error(message, 400)),
+                )
+                    .into_response()
+            }
+        };
+
+    let decoded = match BASE64_STANDARD.decode(body.content_base64.trim()) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::models::ApiResponse::error(
+                    "Archivo inválido. No se pudo decodificar la evidencia.".to_string(),
+                    400,
+                )),
+            )
+                .into_response()
+        }
+    };
+
+    if decoded.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::models::ApiResponse::error(
+                "La evidencia está vacía.".to_string(),
+                400,
+            )),
+        )
+            .into_response();
+    }
+
+    if decoded.len() > PROJECT_EVIDENCE_MAX_BYTES {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::models::ApiResponse::error(
+                "La evidencia debe pesar menos de 1 MB.".to_string(),
+                400,
+            )),
+        )
+            .into_response();
+    }
+
+    let mut client = match state.pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(crate::models::ApiResponse::error(e.to_string(), 500)),
+            )
+                .into_response()
+        }
+    };
+
+    let proyecto = match proyectos_obtener_detalle(&mut client, id).await {
+        Some(value) => value,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::models::ApiResponse::error(
+                    "Proyecto no encontrado".to_string(),
+                    404,
+                )),
+            )
+                .into_response();
+        }
+    };
+
+    if !proyectos_tiene_permiso(&mut client, id, &proyecto, &user, "EDIT_PROJECT").await {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(crate::models::ApiResponse::error(
+                "No tienes permiso para subir evidencias en este proyecto.".to_string(),
+                403,
+            )),
+        )
+            .into_response();
+    }
+
+    let root = proyectos_evidencia_root_for(id);
+    if let Err(e) = fs::create_dir_all(&root).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(crate::models::ApiResponse::error(
+                format!("No se pudo preparar la carpeta de evidencias: {}", e),
+                500,
+            )),
+        )
+            .into_response();
+    }
+
+    let relative_path = format!("{}/{}", id, safe_name);
+    let file_path = StdPath::new(PROJECT_EVIDENCE_ROOT).join(&relative_path);
+    if let Err(e) = fs::write(&file_path, &decoded).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(crate::models::ApiResponse::error(
+                format!("No se pudo guardar la evidencia: {}", e),
+                500,
+            )),
+        )
+            .into_response();
+    }
+
+    let previous_rows = crate::handlers::equipo::exec_query_to_json(
+        &mut client,
+        "SELECT relativePath FROM dbo.p_ProyectoEvidencias WHERE idProyecto = @P1 AND slot = @P2",
+        &[&id, &(body.slot as i32)],
+    )
+    .await;
+    let previous_path = previous_rows
+        .first()
+        .and_then(|row| proyectos_json_string(row, "relativePath"));
+
+    let op_result = if previous_path.is_some() {
+        client
+            .execute(
+                "UPDATE dbo.p_ProyectoEvidencias
+                 SET fileNameOriginal = @P3,
+                     fileNameStored = @P4,
+                     mimeType = @P5,
+                     fileSizeBytes = @P6,
+                     relativePath = @P7,
+                     updatedAt = GETDATE()
+                 WHERE idProyecto = @P1 AND slot = @P2",
+                &[
+                    &id,
+                    &(body.slot as i32),
+                    &body.file_name,
+                    &safe_name,
+                    &body.mime_type,
+                    &(decoded.len() as i32),
+                    &relative_path,
+                ],
+            )
+            .await
+    } else {
+        client
+            .execute(
+                "INSERT INTO dbo.p_ProyectoEvidencias
+                 (idProyecto, slot, fileNameOriginal, fileNameStored, mimeType, fileSizeBytes, relativePath, createdAt)
+                 VALUES (@P1, @P2, @P3, @P4, @P5, @P6, @P7, GETDATE())",
+                &[
+                    &id,
+                    &(body.slot as i32),
+                    &body.file_name,
+                    &safe_name,
+                    &body.mime_type,
+                    &(decoded.len() as i32),
+                    &relative_path,
+                ],
+            )
+            .await
+    };
+
+    if let Err(e) = op_result {
+        let _ = fs::remove_file(&file_path).await;
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::models::ApiResponse::error(e.to_string(), 400)),
+        )
+            .into_response();
+    }
+
+    if let Some(old_relative_path) = previous_path.filter(|value| value != &relative_path) {
+        let old_file_path = StdPath::new(PROJECT_EVIDENCE_ROOT).join(old_relative_path);
+        let _ = fs::remove_file(old_file_path).await;
+    }
+
+    let evidencias = proyectos_evidencias_query(&mut client, id).await;
+
+    (
+        StatusCode::OK,
+        Json(crate::models::ApiResponse::success(evidencias)),
+    )
+        .into_response()
+}
+
+pub async fn proyectos_evidencias_delete(
+    user: AuthUser,
+    State(state): State<ApiState>,
+    Path((id, slot)): Path<(i32, u8)>,
+) -> impl IntoResponse {
+    if slot == 0 || slot > PROJECT_EVIDENCE_MAX_SLOTS {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::models::ApiResponse::error(
+                "Slot de evidencia inválido.".to_string(),
+                400,
+            )),
+        )
+            .into_response();
+    }
+
+    let mut client = match state.pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(crate::models::ApiResponse::error(e.to_string(), 500)),
+            )
+                .into_response()
+        }
+    };
+
+    let proyecto = match proyectos_obtener_detalle(&mut client, id).await {
+        Some(value) => value,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::models::ApiResponse::error(
+                    "Proyecto no encontrado".to_string(),
+                    404,
+                )),
+            )
+                .into_response();
+        }
+    };
+
+    if !proyectos_tiene_permiso(&mut client, id, &proyecto, &user, "EDIT_PROJECT").await {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(crate::models::ApiResponse::error(
+                "No tienes permiso para eliminar evidencias en este proyecto.".to_string(),
+                403,
+            )),
+        )
+            .into_response();
+    }
+
+    let rows = crate::handlers::equipo::exec_query_to_json(
+        &mut client,
+        "SELECT relativePath FROM dbo.p_ProyectoEvidencias WHERE idProyecto = @P1 AND slot = @P2",
+        &[&id, &(slot as i32)],
+    )
+    .await;
+    let relative_path = rows
+        .first()
+        .and_then(|row| proyectos_json_string(row, "relativePath"));
+
+    if relative_path.is_none() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(crate::models::ApiResponse::error(
+                "No existe evidencia en ese espacio.".to_string(),
+                404,
+            )),
+        )
+            .into_response();
+    }
+
+    if let Err(e) = client
+        .execute(
+            "DELETE FROM dbo.p_ProyectoEvidencias WHERE idProyecto = @P1 AND slot = @P2",
+            &[&id, &(slot as i32)],
+        )
+        .await
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::models::ApiResponse::error(e.to_string(), 400)),
+        )
+            .into_response();
+    }
+
+    if let Some(path) = relative_path {
+        let _ = fs::remove_file(StdPath::new(PROJECT_EVIDENCE_ROOT).join(path)).await;
+    }
+
+    let evidencias = proyectos_evidencias_query(&mut client, id).await;
+
+    (
+        StatusCode::OK,
+        Json(crate::models::ApiResponse::success(evidencias)),
+    )
+        .into_response()
 }
 
 pub async fn proyectos_tareas(
@@ -1282,6 +1875,19 @@ pub async fn proyectos_update(
             .into_response();
     }
 
+    let estado_actual = proyectos_estado_actual(&proyecto);
+    let es_admin_global = proyectos_is_admin_user(&mut client, &user).await;
+    if estado_actual == "PendienteAprobacion" && !es_admin_global {
+        return (
+            StatusCode::CONFLICT,
+            Json(crate::models::ApiResponse::error(
+                "El proyecto está pendiente de aprobación. Espera la resolución del administrador o solicita devolución.".to_string(),
+                409,
+            )),
+        )
+            .into_response();
+    }
+
     let updates = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
 
     let __ret = match client.execute(
@@ -1413,6 +2019,22 @@ pub struct ProyectoUpdateRequest {
     pub responsable_carnet: Option<String>,
     #[serde(rename = "modoVisibilidad")]
     pub modo_visibilidad: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ProyectoEvidenciaUploadRequest {
+    pub slot: u8,
+    #[serde(rename = "fileName")]
+    pub file_name: String,
+    #[serde(rename = "mimeType")]
+    pub mime_type: String,
+    #[serde(rename = "contentBase64")]
+    pub content_base64: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ProyectoSolicitarAprobacionRequest {
+    pub motivo: Option<String>,
 }
 
 #[derive(Deserialize)]

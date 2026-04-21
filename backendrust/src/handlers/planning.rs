@@ -736,6 +736,217 @@ async fn planning_can_resolve_change_request(
     visible_carnets.iter().any(|c| c == &target_carnet)
 }
 
+fn planning_normalize_task_approval_rows(
+    rows: Vec<serde_json::Value>,
+) -> Vec<serde_json::Value> {
+    rows.into_iter()
+        .map(|row| {
+            let id_solicitud = row
+                .get("idSolicitud")
+                .cloned()
+                .unwrap_or(serde_json::json!(0));
+            let id_tarea = row
+                .get("idTarea")
+                .cloned()
+                .unwrap_or(serde_json::json!(0));
+            let id_usuario_solicitante = row
+                .get("idUsuarioSolicitante")
+                .cloned()
+                .unwrap_or(serde_json::json!(0));
+            let tarea_nombre = row
+                .get("tareaNombre")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let proyecto_nombre = row
+                .get("proyectoNombre")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let solicitante_nombre = row
+                .get("solicitanteNombre")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Solicitante Desconocido")
+                .to_string();
+            let solicitante_carnet = row
+                .get("solicitanteCarnet")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            serde_json::json!({
+                "idSolicitud": id_solicitud,
+                "tipoSolicitud": "CambioTarea",
+                "fechaSolicitud": row.get("fechaSolicitud").cloned().unwrap_or(serde_json::Value::Null),
+                "motivo": row.get("motivo").cloned().unwrap_or(serde_json::Value::Null),
+                "campoAfectado": row.get("campo").cloned().unwrap_or(serde_json::Value::Null),
+                "valorAnterior": row.get("valorAnterior").cloned().unwrap_or(serde_json::Value::Null),
+                "valorNuevo": row.get("valorNuevo").cloned().unwrap_or(serde_json::Value::Null),
+                "idTarea": id_tarea,
+                "tarea": {
+                    "idTarea": id_tarea,
+                    "titulo": tarea_nombre,
+                },
+                "proyecto": {
+                    "nombre": proyecto_nombre,
+                },
+                "idUsuarioSolicitante": id_usuario_solicitante,
+                "usuarioSolicitante": {
+                    "idUsuario": id_usuario_solicitante,
+                    "nombre": solicitante_nombre,
+                    "carnet": solicitante_carnet,
+                }
+            })
+        })
+        .collect()
+}
+
+async fn planning_project_approval_rows(
+    client: &mut SqlConnection<'_>,
+) -> Vec<serde_json::Value> {
+    crate::handlers::equipo::exec_query_to_json(
+        client,
+        "SELECT
+            s.idSolicitudProyecto,
+            s.idProyecto,
+            s.idUsuarioSolicitante,
+            s.motivo,
+            s.estado,
+            s.fechaSolicitud,
+            p.nombre AS proyectoNombre,
+            p.descripcion AS proyectoDescripcion,
+            p.tipo AS proyectoTipo,
+            p.estado AS proyectoEstado,
+            p.creadorCarnet,
+            u.nombre AS solicitanteNombre,
+            u.carnet AS solicitanteCarnet,
+            uc.nombre AS creadorNombre,
+            uc.correo AS creadorCorreo
+         FROM dbo.p_ProyectoSolicitudesAprobacion s
+         INNER JOIN dbo.p_Proyectos p ON p.idProyecto = s.idProyecto
+         INNER JOIN dbo.p_Usuarios u ON u.idUsuario = s.idUsuarioSolicitante
+         LEFT JOIN dbo.p_Usuarios uc ON uc.idUsuario = p.idCreador
+         WHERE s.estado = 'Pendiente'
+         ORDER BY s.fechaSolicitud DESC",
+        &[],
+    )
+    .await
+    .into_iter()
+    .map(|row| {
+        let id_solicitud = row
+            .get("idSolicitudProyecto")
+            .cloned()
+            .unwrap_or(serde_json::json!(0));
+        let id_proyecto = row
+            .get("idProyecto")
+            .cloned()
+            .unwrap_or(serde_json::json!(0));
+        let id_usuario_solicitante = row
+            .get("idUsuarioSolicitante")
+            .cloned()
+            .unwrap_or(serde_json::json!(0));
+        let solicitante_nombre = row
+            .get("solicitanteNombre")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Solicitante Desconocido")
+            .to_string();
+        let solicitante_carnet = row
+            .get("solicitanteCarnet")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        serde_json::json!({
+            "idSolicitud": id_solicitud,
+            "tipoSolicitud": "AprobacionProyecto",
+            "fechaSolicitud": row.get("fechaSolicitud").cloned().unwrap_or(serde_json::Value::Null),
+            "motivo": row.get("motivo").cloned().unwrap_or(serde_json::Value::Null),
+            "idProyecto": id_proyecto,
+            "proyecto": {
+                "idProyecto": id_proyecto,
+                "nombre": row.get("proyectoNombre").cloned().unwrap_or(serde_json::Value::Null),
+                "descripcion": row.get("proyectoDescripcion").cloned().unwrap_or(serde_json::Value::Null),
+                "tipo": row.get("proyectoTipo").cloned().unwrap_or(serde_json::Value::Null),
+                "estado": row.get("proyectoEstado").cloned().unwrap_or(serde_json::Value::Null),
+                "creadorNombre": row.get("creadorNombre").cloned().unwrap_or(serde_json::Value::Null),
+                "creadorCorreo": row.get("creadorCorreo").cloned().unwrap_or(serde_json::Value::Null),
+                "creadorCarnet": row.get("creadorCarnet").cloned().unwrap_or(serde_json::Value::Null)
+            },
+            "idUsuarioSolicitante": id_usuario_solicitante,
+            "usuarioSolicitante": {
+                "idUsuario": id_usuario_solicitante,
+                "nombre": solicitante_nombre,
+                "carnet": solicitante_carnet,
+            }
+        })
+    })
+    .collect()
+}
+
+async fn planning_send_project_approval_email(
+    state: &ApiState,
+    to_email: &str,
+    creator_name: &str,
+    project_name: &str,
+    approved: bool,
+    comentario: &str,
+    id_proyecto: i32,
+    creator_user_id: Option<i32>,
+    creator_carnet: Option<&str>,
+) {
+    if to_email.trim().is_empty() {
+        return;
+    }
+
+    let estado_texto = if approved { "aprobado" } else { "rechazado" };
+    let comentario_html = if comentario.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<p style=\"margin-top:16px;\"><strong>Comentario del administrador:</strong><br>{}</p>",
+            comentario
+        )
+    };
+    let html = format!(
+        "<h2>Resolución de proyecto</h2>\
+         <p>Hola {},</p>\
+         <p>Tu proyecto <strong>{}</strong> fue <strong>{}</strong>.</p>\
+         {}\
+         <p>Ingresa al portal para revisar el estado actualizado.</p>",
+        if creator_name.trim().is_empty() {
+            "equipo"
+        } else {
+            creator_name
+        },
+        project_name,
+        estado_texto,
+        comentario_html
+    );
+    let subject = if approved {
+        format!("Proyecto aprobado: {}", project_name)
+    } else {
+        format!("Proyecto rechazado: {}", project_name)
+    };
+    let meta = serde_json::json!({
+        "idUsuario": creator_user_id,
+        "carnet": creator_carnet.unwrap_or(""),
+        "idEntidad": format!("proyecto:{}", id_proyecto)
+    });
+
+    if let Err(error) = state
+        .notification_service
+        .send_email(to_email, &subject, html, Some(meta))
+        .await
+    {
+        tracing::error!(
+            "No se pudo enviar email de aprobación de proyecto {} a {}: {}",
+            id_proyecto,
+            to_email,
+            error
+        );
+    }
+}
+
 fn planning_parse_optional_datetime(value: &str) -> Option<chrono::NaiveDateTime> {
     if value.is_empty() {
         return None;
@@ -998,14 +1209,76 @@ pub async fn planning_pending(
     user: crate::auth::AuthUser,
     State(state): State<ApiState>,
 ) -> impl IntoResponse {
-    crate::handlers::tareas::tareas_solicitud_cambio_pendientes(user, State(state)).await
+    planning_approvals(user, State(state)).await
 }
 
 pub async fn planning_approvals(
     user: crate::auth::AuthUser,
     State(state): State<ApiState>,
 ) -> impl IntoResponse {
-    crate::handlers::tareas::tareas_solicitud_cambio_pendientes(user, State(state)).await
+    let mut client = match state.pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(crate::models::ApiResponse::error(e.to_string(), 500)),
+            )
+                .into_response()
+        }
+    };
+
+    let mut items = if planning_is_admin_user(&mut client, &user).await {
+        let rows = crate::handlers::equipo::exec_sp_to_json(
+            &mut client,
+            "EXEC sp_SolicitudCambio_ObtenerPendientes_rust",
+            &[],
+        )
+        .await;
+        planning_normalize_task_approval_rows(rows)
+    } else {
+        let jefe_carnet = user.carnet().trim().to_string();
+        if jefe_carnet.is_empty() || jefe_carnet == "UNKNOWN" {
+            vec![]
+        } else {
+            let team_rows = crate::handlers::equipo::exec_query_to_json(
+                &mut client,
+                "SELECT carnet FROM p_Usuarios WHERE jefeCarnet = @P1 AND activo = 1 ORDER BY nombre ASC",
+                &[&jefe_carnet],
+            )
+            .await;
+            let mut team_carnets: Vec<String> = team_rows
+                .iter()
+                .filter_map(|row| row.get("carnet").and_then(|value| value.as_str()))
+                .map(|carnet| carnet.trim().to_string())
+                .filter(|carnet| !carnet.is_empty())
+                .collect();
+            team_carnets.sort();
+            team_carnets.dedup();
+
+            if team_carnets.is_empty() {
+                vec![]
+            } else {
+                let carnets_csv = team_carnets.join(",");
+                let rows = crate::handlers::equipo::exec_sp_to_json(
+                    &mut client,
+                    "EXEC sp_SolicitudCambio_ObtenerPendientesPorCarnets_rust @P1",
+                    &[&carnets_csv],
+                )
+                .await;
+                planning_normalize_task_approval_rows(rows)
+            }
+        }
+    };
+
+    if planning_is_admin_user(&mut client, &user).await {
+        items.extend(planning_project_approval_rows(&mut client).await);
+    }
+
+    (
+        StatusCode::OK,
+        Json(crate::models::ApiResponse::success(items)),
+    )
+        .into_response()
 }
 
 pub async fn planning_check_permission(
@@ -1282,6 +1555,186 @@ pub async fn planning_resolve(
             .into_response();
     }
 
+    let comentario_recibido = body.comentario.unwrap_or_default().trim().to_string();
+    let id_usuario = user.user_id_i32();
+    let tipo_solicitud = body
+        .tipo_solicitud
+        .clone()
+        .unwrap_or_else(|| "CambioTarea".to_string());
+    let estado = if accion == "Aprobar" {
+        "Aprobado"
+    } else {
+        "Rechazado"
+    };
+    let comentario_final = if comentario_recibido.is_empty() {
+        if accion == "Aprobar" {
+            "Aprobado por superior".to_string()
+        } else {
+            "Rechazado por superior".to_string()
+        }
+    } else {
+        comentario_recibido
+    };
+
+    if tipo_solicitud == "AprobacionProyecto" {
+        if !planning_is_admin_user(&mut client, &user).await {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(crate::models::ApiResponse::error(
+                    "Solo un administrador puede resolver aprobaciones de proyectos.".to_string(),
+                    403,
+                )),
+            )
+                .into_response();
+        }
+
+        let project_request_rows = crate::handlers::equipo::exec_query_to_json(
+            &mut client,
+            "SELECT TOP 1
+                s.idSolicitudProyecto,
+                s.idProyecto,
+                s.estado,
+                p.nombre AS proyectoNombre,
+                p.idCreador,
+                p.creadorCarnet,
+                uc.nombre AS creadorNombre,
+                uc.correo AS creadorCorreo
+             FROM dbo.p_ProyectoSolicitudesAprobacion s
+             INNER JOIN dbo.p_Proyectos p ON p.idProyecto = s.idProyecto
+             LEFT JOIN dbo.p_Usuarios uc ON uc.idUsuario = p.idCreador
+             WHERE s.idSolicitudProyecto = @P1",
+            &[&id_solicitud],
+        )
+        .await;
+        let project_request = match project_request_rows.first() {
+            Some(value) => value.clone(),
+            None => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(crate::models::ApiResponse::error(
+                        "Solicitud de proyecto no encontrada".to_string(),
+                        404,
+                    )),
+                )
+                    .into_response()
+            }
+        };
+
+        let estado_actual = project_request
+            .get("estado")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if estado_actual != "Pendiente" {
+            return (
+                StatusCode::CONFLICT,
+                Json(crate::models::ApiResponse::error(
+                    "Esta solicitud de proyecto ya fue resuelta.".to_string(),
+                    409,
+                )),
+            )
+                .into_response();
+        }
+
+        let id_proyecto = project_request
+            .get("idProyecto")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32;
+        let project_state = if accion == "Aprobar" {
+            "Activo"
+        } else {
+            "Rechazado"
+        };
+        let requiere_aprobacion = if accion == "Aprobar" { false } else { true };
+
+        if let Err(e) = client
+            .execute(
+                "UPDATE dbo.p_Proyectos
+                 SET estado = @P1,
+                     requiereAprobacion = @P2,
+                     fechaActualizacion = GETDATE()
+                 WHERE idProyecto = @P3",
+                &[&project_state, &requiere_aprobacion, &id_proyecto],
+            )
+            .await
+        {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(crate::models::ApiResponse::error(e.to_string(), 500)),
+            )
+                .into_response();
+        }
+
+        if let Err(e) = client
+            .execute(
+                "UPDATE dbo.p_ProyectoSolicitudesAprobacion
+                 SET estado = @P1,
+                     idUsuarioResolutor = @P2,
+                     fechaResolucion = GETDATE(),
+                     comentarioResolucion = @P3
+                 WHERE idSolicitudProyecto = @P4",
+                &[&estado, &id_usuario, &comentario_final, &id_solicitud],
+            )
+            .await
+        {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(crate::models::ApiResponse::error(e.to_string(), 500)),
+            )
+                .into_response();
+        }
+
+        let creator_email = project_request
+            .get("creadorCorreo")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let creator_name = project_request
+            .get("creadorNombre")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let project_name = project_request
+            .get("proyectoNombre")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Proyecto")
+            .to_string();
+        let creator_user_id = project_request
+            .get("idCreador")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32);
+        let creator_carnet = project_request
+            .get("creadorCarnet")
+            .and_then(|v| v.as_str());
+
+        planning_send_project_approval_email(
+            &state,
+            &creator_email,
+            &creator_name,
+            &project_name,
+            accion == "Aprobar",
+            &comentario_final,
+            id_proyecto,
+            creator_user_id,
+            creator_carnet,
+        )
+        .await;
+
+        let mensaje = if accion == "Aprobar" {
+            "Proyecto aprobado correctamente"
+        } else {
+            "Proyecto rechazado y devuelto para corrección"
+        };
+
+        return (
+            StatusCode::OK,
+            Json(crate::models::ApiResponse::success(serde_json::json!({
+                "idSolicitud": id_solicitud,
+                "mensaje": mensaje
+            }))),
+        )
+            .into_response();
+    }
+
     let solicitud_rows = crate::handlers::equipo::exec_query_to_json(
         &mut client,
         "SELECT idSolicitud, idTarea, campo, valorNuevo, idUsuarioSolicitante FROM p_SolicitudesCambio WHERE idSolicitud = @P1",
@@ -1316,24 +1769,6 @@ pub async fn planning_resolve(
         )
             .into_response();
     }
-
-    let comentario_recibido = body.comentario.unwrap_or_default().trim().to_string();
-    let id_usuario = user.user_id_i32();
-
-    let estado = if accion == "Aprobar" {
-        "Aprobado"
-    } else {
-        "Rechazado"
-    };
-    let comentario_final = if comentario_recibido.is_empty() {
-        if accion == "Aprobar" {
-            "Aprobado por superior".to_string()
-        } else {
-            "Rechazado por superior".to_string()
-        }
-    } else {
-        comentario_recibido
-    };
 
     if accion == "Aprobar" {
         let id_tarea = solicitud
@@ -1466,6 +1901,7 @@ pub async fn planning_approval_resolve(
         State(state),
         Json(PlanningResolveRequest {
             id_solicitud: Some(id_solicitud as u64),
+            tipo_solicitud: body.tipo_solicitud,
             accion: body.accion,
             comentario: body.comentario,
         }),
@@ -3729,6 +4165,8 @@ pub struct PlanningRequestChangeRequest {
 pub struct PlanningResolveRequest {
     #[serde(rename = "idSolicitud")]
     pub id_solicitud: Option<u64>,
+    #[serde(rename = "tipoSolicitud", alias = "requestType")]
+    pub tipo_solicitud: Option<String>,
     #[serde(alias = "action")]
     pub accion: String,
     #[serde(alias = "comment")]

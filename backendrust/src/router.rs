@@ -145,6 +145,18 @@ pub fn api_router(
                 .patch(proyectos_update)
                 .delete(proyectos_delete),
         )
+        .route(
+            "/proyectos/:id/solicitar-aprobacion",
+            post(proyectos_solicitar_aprobacion),
+        )
+        .route(
+            "/proyectos/:id/evidencias",
+            get(proyectos_evidencias_list).post(proyectos_evidencias_upload),
+        )
+        .route(
+            "/proyectos/:id/evidencias/:slot",
+            delete(proyectos_evidencias_delete),
+        )
         .route("/proyectos/:id/tareas", get(proyectos_tareas))
         .route("/proyectos/:id/historial", get(proyectos_historial))
         .route(
