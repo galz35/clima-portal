@@ -10,7 +10,7 @@ import { api } from './api';
 import type { ApiResponse } from '../types/api';
 import type {
     Checkin, Tarea, Bloqueo, CheckinUpsertDto, BloqueoCrearDto, TareaCrearRapidaDto, TareaRegistrarAvanceDto,
-    Usuario, Proyecto, TareaAvanceMensual
+    Usuario, Proyecto, ProyectoEvidencia, TareaAvanceMensual
 } from '../types/modelos';
 import type { EquipoHoyResponse } from '../types/equipo';
 
@@ -363,6 +363,11 @@ export const clarityService = {
         return response.data;
     },
 
+    solicitarAprobacionProyecto: async (idProyecto: number, motivo?: string) => {
+        const { data: response } = await api.post<ApiResponse<any>>(`/proyectos/${idProyecto}/solicitar-aprobacion`, { motivo });
+        return response.data;
+    },
+
     getProyectosTareas: async (idProyecto: number) => {
         const { data: response } = await api.get<ApiResponse<Tarea[]>>(`/proyectos/${idProyecto}/tareas`);
 
@@ -382,6 +387,24 @@ export const clarityService = {
     getProyectoHistorial: async (idProyecto: number, page: number = 1, limit: number = 50) => {
         const { data: response } = await api.get<ApiResponse<any>>(`/proyectos/${idProyecto}/historial`, { params: { page, limit } });
         return response.data;
+    },
+
+    getProyectoEvidencias: async (idProyecto: number) => {
+        const { data: response } = await api.get<ApiResponse<ProyectoEvidencia[]>>(`/proyectos/${idProyecto}/evidencias`);
+        return response.data || [];
+    },
+
+    uploadProyectoEvidencia: async (
+        idProyecto: number,
+        payload: { slot: number; fileName: string; mimeType: string; contentBase64: string }
+    ) => {
+        const { data: response } = await api.post<ApiResponse<ProyectoEvidencia[]>>(`/proyectos/${idProyecto}/evidencias`, payload);
+        return response.data || [];
+    },
+
+    deleteProyectoEvidencia: async (idProyecto: number, slot: number) => {
+        const { data: response } = await api.delete<ApiResponse<ProyectoEvidencia[]>>(`/proyectos/${idProyecto}/evidencias/${slot}`);
+        return response.data || [];
     },
 
     // Config

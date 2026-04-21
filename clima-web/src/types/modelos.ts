@@ -50,7 +50,7 @@ export interface Proyecto {
     nombre: string;
     descripcion?: string;
     idNodoDuenio?: number;
-    estado: 'Borrador' | 'Confirmado' | 'EnEjecucion' | 'Cerrado' | 'Activo'; // 'Activo' kept for legacy
+    estado: 'Borrador' | 'PendienteAprobacion' | 'Rechazado' | 'Confirmado' | 'EnEjecucion' | 'Cerrado' | 'Activo'; // 'Activo' kept for legacy
     fechaCreacion?: string;
     enllavado?: boolean;
     fechaInicio?: string;
@@ -67,6 +67,20 @@ export interface Proyecto {
     tipo?: string;
     totalTareas?: number;
     tareasCompletadas?: number;
+}
+
+export interface ProyectoEvidencia {
+    idEvidencia: number;
+    idProyecto: number;
+    slot: number;
+    fileNameOriginal: string;
+    fileNameStored?: string;
+    mimeType: string;
+    fileSizeBytes: number;
+    relativePath?: string;
+    dataUrl?: string;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface SolicitudCambio {

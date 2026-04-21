@@ -2,14 +2,17 @@ import { api } from './api';
 
 export interface SolicitudCambio {
     idSolicitud: number;
-    idTarea: number;
-    tarea: any;
-    idUsuarioSolicitante: number;
-    usuarioSolicitante: any;
-    campoAfectado: string;
-    valorAnterior: string;
-    valorNuevo: string;
-    motivo: string;
+    tipoSolicitud?: 'CambioTarea' | 'AprobacionProyecto';
+    idProyecto?: number;
+    idTarea?: number;
+    tarea?: any;
+    proyecto?: any;
+    idUsuarioSolicitante?: number;
+    usuarioSolicitante?: any;
+    campoAfectado?: string;
+    valorAnterior?: string;
+    valorNuevo?: string;
+    motivo?: string;
     estado: 'Pendiente' | 'Aprobado' | 'Rechazado';
     fechaSolicitud: string;
 }
@@ -42,8 +45,13 @@ export const planningService = {
     /**
      * Resuelve una solicitud (Aprobar/Rechazar).
      */
-    resolveRequest: async (idSolicitud: number, accion: 'Aprobar' | 'Rechazar', comentario?: string): Promise<SolicitudCambio> => {
-        const response = await api.post(`/planning/approvals/${idSolicitud}/resolve`, { accion, comentario });
+    resolveRequest: async (
+        idSolicitud: number,
+        accion: 'Aprobar' | 'Rechazar',
+        comentario?: string,
+        tipoSolicitud?: 'CambioTarea' | 'AprobacionProyecto'
+    ): Promise<SolicitudCambio> => {
+        const response = await api.post(`/planning/approvals/${idSolicitud}/resolve`, { accion, comentario, tipoSolicitud });
         return response.data.data;
     },
 
@@ -93,4 +101,3 @@ export const planningService = {
         return response.data.data;
     }
 };
-

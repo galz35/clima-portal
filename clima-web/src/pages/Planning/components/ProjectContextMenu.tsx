@@ -1,5 +1,5 @@
 import React from 'react';
-import { History, Copy, Users } from 'lucide-react';
+import { History, Copy, Users, Send } from 'lucide-react';
 import type { Proyecto } from '../../../types/modelos';
 
 interface ProjectContextMenuProps {
@@ -12,20 +12,22 @@ interface ProjectContextMenuProps {
     onHistory: (p: Proyecto) => void;
     onClone: (p: Proyecto) => void;
     onCollaborators: (p: Proyecto) => void;
+    onSubmitApproval: (p: Proyecto) => void;
     onDelete: (p: Proyecto) => void;
     onClose: () => void;
 }
 
 export const ProjectContextMenu: React.FC<ProjectContextMenuProps> = ({
     menuRef, activeMenuId, menuPos, projects,
-    onNavigatePlan, onEdit, onHistory, onClone, onCollaborators, onDelete, onClose
+    onNavigatePlan, onEdit, onHistory, onClone, onCollaborators, onSubmitApproval, onDelete, onClose
 }) => {
     if (!activeMenuId || !menuPos) return null;
 
     const findProject = () => projects.find(x => Number(x.idProyecto) === Number(activeMenuId));
+    const currentProject = findProject();
 
     const action = (fn: (p: Proyecto) => void) => {
-        const p = findProject();
+        const p = currentProject;
         if (p) { onClose(); fn(p); }
     };
 
@@ -55,6 +57,15 @@ export const ProjectContextMenu: React.FC<ProjectContextMenuProps> = ({
 
                 <button onClick={() => action(onCollaborators)} className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-t border-slate-50">
                     <Users size={14} className="text-slate-400" /> Colaboradores
+                </button>
+
+                <button
+                    onClick={() => action(onSubmitApproval)}
+                    disabled={currentProject?.estado === 'PendienteAprobacion'}
+                    className="w-full text-left px-4 py-3 text-sm font-bold text-indigo-700 hover:bg-indigo-50 flex items-center gap-2 border-t border-slate-50 disabled:opacity-50 disabled:hover:bg-white"
+                >
+                    <Send size={14} className="text-indigo-500" />
+                    {currentProject?.estado === 'PendienteAprobacion' ? 'Pendiente de aprobación' : 'Enviar a aprobación'}
                 </button>
 
                 <button onClick={() => action(onDelete)} className="w-full text-left px-4 py-3 text-sm font-bold text-rose-700 hover:bg-rose-50 flex items-center gap-2 border-t border-slate-50">

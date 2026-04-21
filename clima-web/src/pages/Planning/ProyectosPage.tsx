@@ -206,6 +206,8 @@ export const ProyectosPage: React.FC = () => {
         const e = (estado || '').toLowerCase();
 
         if (e.includes('borrador')) return 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm shadow-amber-100/50';
+        if (e.includes('pendienteaprobacion')) return 'bg-sky-50 text-sky-700 border-sky-200 shadow-sm shadow-sky-100/50';
+        if (e.includes('rechaz')) return 'bg-rose-50 text-rose-700 border-rose-200 shadow-sm shadow-rose-100/50';
         if (e.includes('activo') || e.includes('enejecucion') || e.includes('encurso')) return 'bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm shadow-indigo-100/50';
         if (e.includes('deten')) return 'bg-rose-50 text-rose-700 border-rose-200 shadow-sm shadow-rose-100/50';
         if (e.includes('termin') || e.includes('final')) return 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-sm shadow-emerald-100/50';
@@ -218,6 +220,8 @@ export const ProyectosPage: React.FC = () => {
         const e = (estado || '').toLowerCase();
 
         if (e.includes('borrador')) return <CheckCircle size={14} className="text-amber-600" />;
+        if (e.includes('pendienteaprobacion')) return <AlertCircle size={14} className="text-sky-600" />;
+        if (e.includes('rechaz')) return <X size={14} className="text-rose-600" />;
         if (e.includes('activo') || e.includes('enejecucion') || e.includes('encurso')) return <GitPullRequest size={14} className="text-indigo-600" />;
         if (e.includes('deten')) return <X size={14} className="text-rose-600" />;
         if (e.includes('termin') || e.includes('final')) return <CheckCircle size={14} className="text-emerald-600" />;
@@ -711,6 +715,45 @@ export const ProyectosPage: React.FC = () => {
         } catch (error) {
             console.error('Error clonando proyecto:', error);
             showToast('Error al clonar el proyecto.', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSubmitApproval = async (p: Proyecto) => {
+        if (p.estado === 'PendienteAprobacion') {
+            showToast('Este proyecto ya está pendiente de aprobación', 'info');
+            return;
+        }
+
+        const { isConfirmed, value } = await Swal.fire({
+            title: 'Enviar proyecto a aprobación',
+            text: `El administrador revisará "${p.nombre}" y podrá aprobarlo o devolverlo con observaciones.`,
+            input: 'textarea',
+            inputLabel: 'Motivo o contexto para el administrador',
+            inputPlaceholder: 'Opcional: breve resumen del proyecto o lo que debe revisar',
+            inputAttributes: {
+                maxlength: '500'
+            },
+            showCancelButton: true,
+            confirmButtonText: 'Enviar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#4f46e5',
+            cancelButtonColor: '#64748b',
+            reverseButtons: true
+        });
+
+        if (!isConfirmed) return;
+
+        setSaving(true);
+        try {
+            await clarityService.solicitarAprobacionProyecto(p.idProyecto, value || undefined);
+            showToast('Proyecto enviado a aprobación', 'success');
+            loadProjects(page);
+        } catch (error: any) {
+            console.error(error);
+            const message = error.response?.data?.message || 'No se pudo enviar el proyecto a aprobación';
+            showToast(message, 'error');
         } finally {
             setSaving(false);
         }
@@ -1260,6 +1303,7 @@ export const ProyectosPage: React.FC = () => {
                 onHistory={(p) => navigate(`/app/planning/proyectos/${p.idProyecto}/historial`)}
                 onClone={handleCloneClick}
                 onCollaborators={(p) => { setColaboradoresProject(p); setShowColaboradoresModal(true); }}
+                onSubmitApproval={handleSubmitApproval}
                 onDelete={handleDelete}
                 onClose={closeMenu}
             />

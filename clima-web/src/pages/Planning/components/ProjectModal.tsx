@@ -2,6 +2,7 @@ import React from 'react';
 import { X, Edit, Plus, ChevronDown, Building2, Calendar, Users as UsersIcon, FileText, Eye, Briefcase } from 'lucide-react';
 import type { Proyecto } from '../../../types/modelos';
 import { UserSelector } from '../../../components/ui/UserSelector';
+import { ProjectEvidenceManager } from './ProjectEvidenceManager';
 
 interface ProjectModalProps {
     isOpen: boolean;
@@ -273,6 +274,18 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                                 </div>
                             </div>
                         </div>
+
+                        {/* ===== Section 5: Evidencias ===== */}
+                        {editingProject?.idProyecto ? (
+                            <ProjectEvidenceManager projectId={editingProject.idProyecto} />
+                        ) : (
+                            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-5">
+                                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Evidencias</p>
+                                <p className="mt-2 text-sm font-medium text-slate-500">
+                                    Después de crear el proyecto podrás subir hasta 2 fotos comprimidas a WebP, cada una por debajo de 1 MB.
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     {/* Footer */}
