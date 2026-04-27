@@ -23,6 +23,13 @@ fn proyectos_is_admin_role_name(role: &str) -> bool {
     matches!(role.trim(), "Admin" | "Administrador" | "SuperAdmin")
 }
 
+fn proyectos_is_project_admin_email(email: &str) -> bool {
+    matches!(
+        email.trim().to_ascii_lowercase().as_str(),
+        "allanm.hernandez@claro.com.ni" | "allanm.hernandez@claro.comm.ni"
+    )
+}
+
 fn proyectos_role_level(role: &str) -> u8 {
     match role.trim() {
         "Observador" => 1,
@@ -192,7 +199,10 @@ async fn proyectos_evidencias_query(
 }
 
 async fn proyectos_is_admin_user(client: &mut SqlConnection<'_>, user: &AuthUser) -> bool {
-    if proyectos_is_admin_role_name(user.rol()) || user.is_admin() {
+    if proyectos_is_admin_role_name(user.rol())
+        || user.is_admin()
+        || proyectos_is_project_admin_email(user.correo())
+    {
         return true;
     }
 
@@ -203,11 +213,14 @@ async fn proyectos_is_admin_user(client: &mut SqlConnection<'_>, user: &AuthUser
     )
     .await;
 
-    rows.first()
+    let db_role_is_admin = rows
+        .first()
         .and_then(|row| row.get("rolGlobal"))
         .and_then(|value| value.as_str())
         .map(proyectos_is_admin_role_name)
-        .unwrap_or(false)
+        .unwrap_or(false);
+
+    db_role_is_admin || proyectos_is_project_admin_email(user.correo())
 }
 
 async fn proyectos_effective_user_carnet(

@@ -24,7 +24,8 @@ import {
     Download,
     ChevronRight,
     Users,
-    ListChecks
+    ListChecks,
+    Camera
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 
@@ -604,6 +605,7 @@ export const ProyectosPage: React.FC = () => {
                 if (!targetId) throw new Error('No se pudo determinar el ID del proyecto');
                 await clarityService.updateProyecto(targetId, payload);
                 showToast('Proyecto actualizado', 'success');
+                setIsModalOpen(false);
             } else {
                 // Crear proyecto (nombre es obligatorio)
                 const newProj: any = await clarityService.postProyecto(
@@ -614,10 +616,17 @@ export const ProyectosPage: React.FC = () => {
                 );
                 // Actualizar inmediatamente con el resto de datos (responsable, fechas, etc.)
                 await clarityService.updateProyecto(newProj.idProyecto, payload);
-                showToast('Proyecto creado', 'success');
+                setEditingProject({
+                    ...newProj,
+                    ...payload,
+                    idProyecto: newProj.idProyecto,
+                    nombre: formData.nombre,
+                    descripcion: formData.descripcion,
+                    tipo: formData.tipo || 'administrativo'
+                });
+                showToast('Proyecto creado. Ya puedes adjuntar hasta 2 evidencias en esta misma ventana.', 'success');
             }
 
-            setIsModalOpen(false);
             loadProjects(1);
         } catch (error) {
             console.error(error);
@@ -1242,6 +1251,24 @@ export const ProyectosPage: React.FC = () => {
                                                                     <p className="text-sm md:text-base text-slate-700 leading-relaxed">
                                                                         {(p as any).descripcion || 'Sin descripción detallada.'}
                                                                     </p>
+                                                                    <div className="mt-4 flex flex-wrap gap-2">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => openModal(p)}
+                                                                            className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 transition-all hover:bg-emerald-100"
+                                                                        >
+                                                                            <Camera size={14} />
+                                                                            Evidencias
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => openModal(p)}
+                                                                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700 transition-all hover:bg-slate-100"
+                                                                        >
+                                                                            <span>✏️</span>
+                                                                            Editar proyecto
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
                                                             </td>
                                                         </tr>

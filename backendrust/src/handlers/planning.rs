@@ -17,11 +17,18 @@ fn is_admin_role_name(role: &str) -> bool {
     matches!(role.trim(), "Admin" | "Administrador" | "SuperAdmin")
 }
 
+fn is_project_admin_email(email: &str) -> bool {
+    matches!(
+        email.trim().to_ascii_lowercase().as_str(),
+        "allanm.hernandez@claro.com.ni" | "allanm.hernandez@claro.comm.ni"
+    )
+}
+
 async fn planning_is_admin_user(
     client: &mut SqlConnection<'_>,
     user: &crate::auth::AuthUser,
 ) -> bool {
-    if is_admin_role_name(user.rol()) || user.is_admin() {
+    if is_admin_role_name(user.rol()) || user.is_admin() || is_project_admin_email(user.correo()) {
         return true;
     }
 
@@ -32,11 +39,14 @@ async fn planning_is_admin_user(
     )
     .await;
 
-    rows.first()
+    let db_role_is_admin = rows
+        .first()
         .and_then(|row| row.get("rolGlobal"))
         .and_then(|value| value.as_str())
         .map(is_admin_role_name)
-        .unwrap_or(false)
+        .unwrap_or(false);
+
+    db_role_is_admin || is_project_admin_email(user.correo())
 }
 
 async fn planning_effective_user_carnet(
